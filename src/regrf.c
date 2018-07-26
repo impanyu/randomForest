@@ -48,7 +48,7 @@ void chooseVar(double* x,int yind, int dimTotal,int nsample, int dim,double* xRe
         last--;
       }
 
-    for(int m=0;m<dimtotal-dim;m++)
+    for(int m=0;m<dimTotal-dim;m++)
           ninds_reverse[nind[m]]=m;
 
     for(int s = 0; s<nsample; s++)  
