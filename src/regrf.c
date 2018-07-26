@@ -136,13 +136,14 @@ void regRFMultiRes(double *x, int *xdim, int *sampsize,
   double  ySelected[nsample];
   double yptr[nsample];
   int xdimSelected[2]={nsample,*subdim };
-  int noutAll[mdim][mdim];
+ 
+  int* noutAll =(int*)S_alloc(mdim*mdim,sizeof(int));
   double* xSelected =(double*)S_alloc(*subdim*nsample,sizeof(double));
   double* yerr =(double*)S_alloc(mdim*nsample,sizeof(double));
 
   double* cov_tmp =(double*)S_alloc(mdim*mdim,sizeof(double));
 
-  
+  zeroInt(noutAll, mdim*mdim);
   /*select random variables as predictors and response variable. */
   
   int i=-1;
@@ -199,7 +200,7 @@ void regRFMultiRes(double *x, int *xdim, int *sampsize,
           if(ninds_reverse[m1]==0) continue;
         for(int m2=0; m2<mdim; m2++){
           if(ninds_reverse[m2]==0) continue;
-          cov[m1*mdim+m2]=(cov[m1*mdim+m2]*noutAll[m1][m2]+cov_tmp[m1*mdim+m2])/(++noutAll[m1][m2]);
+          cov[m1*mdim+m2]=(cov[m1*mdim+m2]*noutAll[m1*mdim+m2]+cov_tmp[m1*mdim+m2])/(++noutAll[m1*mdim+m2]);
         }
      }
 
