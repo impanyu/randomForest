@@ -49,7 +49,7 @@ void chooseVar(double* x,int yind, int dimTotal,int nsample, int dim,double* xRe
       }
 
     for(int m=0;m<dimTotal-dim;m++)
-          ninds_reverse[nind[m]]=m;
+          ninds_reverse[nind[m]]=1;
 
     for(int s = 0; s<nsample; s++)  
         for(int m = 0; m < dim; ++m) {
@@ -65,10 +65,10 @@ void computeCov(double* err, double* cov, int nsample, int mdim ,int ninds_rever
     
     for(int m1=0; m1<mdim; m1++)
         {
-          if(ninds_reverse[m1]==0) continue;
+          if(ninds_reverse[m1]!=1) continue;
             for(int m2=0; m2<mdim; m2++)
             {
-                if(ninds_reverse[m2]==0) continue;
+                if(ninds_reverse[m2]!=1) continue;
                 cov[m1+m2*mdim]=0;
 
                 for(int s=0; s<nsample; s++){
@@ -197,9 +197,9 @@ void regRFMultiRes(double *x, int *xdim, int *sampsize,
      zeroDouble(cov_tmp,mdim*mdim);
      computeCov(yerr,cov_tmp,nsample,mdim,ninds_reverse); //need to modify this part, average the covariance matrix 
      for(int m1=0; m1<mdim; m1++){
-          if(ninds_reverse[m1]==0) continue;
+          if(ninds_reverse[m1]!=1) continue;
         for(int m2=0; m2<mdim; m2++){
-          if(ninds_reverse[m2]==0) continue;
+          if(ninds_reverse[m2]!=1) continue;
           cov[m1*mdim+m2]=(cov[m1*mdim+m2]*noutAll[m1*mdim+m2]+cov_tmp[m1*mdim+m2])/(++noutAll[m1*mdim+m2]);
         }
      }
