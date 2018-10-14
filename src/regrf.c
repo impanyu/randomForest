@@ -15,9 +15,10 @@
 #include <R.h>
 #include "rf.h"
 #include <Rinternals.h>
+#include <stdbool.h>
 
 void simpleLinReg(int nsample, double *x, double *y, double *coef,
-		  double *mse, int *hasPred);
+      double *mse, int *hasPred);
 
 void regRF(double *x, double *y, int *xdim, int *sampsize,
      int *nthsize, int *nrnodes, int *nTree, int *mtry, int *imp,
@@ -32,58 +33,14 @@ void regRF(double *x, double *y, int *xdim, int *sampsize,
            double * resOOB, int* in, int* nodex, int * varUsed, int* nind, double * ytree, int* nodexts, int* oobpair);
 
 
-//choose a subset of dimesions from xy. dim-1 is the new dimensions of x, that is dim is the total dimensions of x + y
-/*
-double** chooseVariableResponse(double* x,double* y, int dimTotal,int nsample, int dim){
-    int  nind[dimTotal];
-    int ktmp;
-    double xResult[dim*nsample];
-
-    double * xyResult[2]={xResult,yResult};
-
-    for (int s = 0; s < dimTotal; ++s) nind[s] = s;
-    last = dimTotal - 1;
-    for (s = 0; s < dim; ++s) {
-        ktmp = (int) (unif_rand() * (last+1));
-        k = nind[ktmp];
-        swapInt(nind[ktmp], nind[last]);
-        last--;
-        //in[k] += 1;
-        //yb[n] = y[k];
-      }
-
-    if(nind[dimTotal-1]==dimTotal-1) yResult=y;
-    else
-        for(int s = 0; s<nsample; s++)  
-              yResult[s]=x[nind[dimTotal-1]+s*dimTotal];
-
-    for(int s = 0; s<nsample; s++)  
-        for(int m = 0; m < dim-1; ++m) {
-            if(nind[dimTotal-2-m]==dimTotal-1)
-              xResult[m + s * dim]=y[s]
-            else
-              xResult[m + s * dim] = x[nind[dimTotal-2-m] + s * dimTotal];
-          }
-
-    return xyResult;
-
-}
-*/
-
-
-
-     
-
-void chooseVar(double* x,int yind, int dimTotal,int nsample, int dim,double* xResult){
-    int  nind[dimTotal];
-    int ktmp;
-
-   
   
+void chooseVar(double* x,int yind, int dimTotal,int nsample, int dim,double* xResult,int* nind,int* ninds_reverse){
     
-    for (int s = 0; s < dimTotal; ++s) nind[s] = s; 
-    swapInt(nind[yind], nind[dimTotal-1]);
-    int last = dimTotal - 2;
+    int ktmp;
+
+
+    //swapInt(nind[yind], nind[dimTotal-1]);
+    int last = dimTotal - 1;
 
     for (int m = 0; m < dim; ++m) {
         ktmp = (int) (unif_rand() * (last+1));
@@ -91,14 +48,38 @@ void chooseVar(double* x,int yind, int dimTotal,int nsample, int dim,double* xRe
         last--;
       }
 
+    for(int m=0;m<dimTotal-dim;m++)
+          ninds_reverse[nind[m]]=1;
+
     for(int s = 0; s<nsample; s++)  
         for(int m = 0; m < dim; ++m) {
-              xResult[m + s * dim] = x[nind[dimTotal-2-m] + s * dimTotal];
+              xResult[m + s * dim] = x[nind[dimTotal-1-m] + s*dimTotal];
           }
 
 
 }
 
+
+void computeCov(double* err, double* cov, int nsample, int mdim ,int ninds_reverse[]){
+   
+    
+    for(int m1=0; m1<mdim; m1++)
+        {
+          if(ninds_reverse[m1]!=1) continue;
+            for(int m2=0; m2<mdim; m2++)
+            {
+                if(ninds_reverse[m2]!=1) continue;
+                cov[m1+m2*mdim]=0;
+
+                for(int s=0; s<nsample; s++){
+                    cov[m1+m2*mdim]+=err[m1+s*mdim]*err[m2+s*mdim];
+                }
+                cov[m1+m2*mdim]/=nsample;
+
+            }
+        }
+
+}
 
 void regRFMultiRes(double *x, int *xdim, int *sampsize,
      int *nthsize, int *nrnodes, int *nTree, int *mtry, int *imp,
@@ -109,31 +90,40 @@ void regRFMultiRes(double *x, int *xdim, int *sampsize,
            double *upper, double *mse, int *keepf, int *replace,
            int *testdat, double *xts, int *nts, double *yts, int *labelts,
            double *yTestPred, double *proxts, double *msets, double *coef,
-           int *nout, int *inbag, int *subdim, int* dimSampleCount, double* yptrmtx
+           int *nout, int *inbag, int *subdim, int* sampleCount, double* yptrmtx, double* cov
           
 
            ) {
 
+
   int nsample = xdim[0];
   int mdim = xdim[1];
+  int ninds[mdim];
+  int ninds_reverse[mdim];
+  int yflag[mdim];
+  int xdimCount=*subdim;
+  int ydimCount=mdim-xdimCount;
+  zeroInt(yflag, mdim);
+  zeroDouble(cov,mdim*mdim);
 
 
-   double * yb         = (double *) S_alloc(*sampsize, sizeof(double));
-    double *xb         = (double *) S_alloc(*subdim * *sampsize, sizeof(double));
-    double *ytr        = (double *) S_alloc(nsample, sizeof(double));
-    double *xtmp       = (double *) S_alloc(nsample, sizeof(double));
-   double * resOOB     = (double *) S_alloc(nsample, sizeof(double));
 
-    int * in        = (int *) S_alloc(nsample, sizeof(int));
-    int *nodex      = (int *) S_alloc(nsample, sizeof(int));
-    int *varUsed    = (int *) S_alloc(*subdim, sizeof(int));
-    int *nind = *replace ? NULL : (int *) S_alloc(nsample, sizeof(int));
+  double * yb        = (double *) S_alloc(*sampsize, sizeof(double));
+  double *xb         = (double *) S_alloc(*subdim * *sampsize, sizeof(double));
+  double *ytr        = (double *) S_alloc(nsample, sizeof(double));
+  double *xtmp       = (double *) S_alloc(nsample, sizeof(double));
+  double * resOOB    = (double *) S_alloc(nsample, sizeof(double));
+
+  int * in        = (int *) S_alloc(nsample, sizeof(int));
+  int *nodex      = (int *) S_alloc(nsample, sizeof(int));
+  int *varUsed    = (int *) S_alloc(*subdim, sizeof(int));
+  int *nind = *replace ? NULL : (int *) S_alloc(nsample, sizeof(int));
 
    
   double *ytree      = *testdat? (double *) S_alloc(*nts, sizeof(double)):NULL;
   int *nodexts    = *testdat?(int *) S_alloc(*nts, sizeof(int)):NULL;
   
-    int *oobpair = (*doProx && *oobprox) ?
+  int *oobpair = (*doProx && *oobprox) ?
   (int *) S_alloc(nsample * nsample, sizeof(int)) : NULL;
 
    if(*subdim > mdim-1 || *subdim < *mtry) {
@@ -146,24 +136,44 @@ void regRFMultiRes(double *x, int *xdim, int *sampsize,
   double  ySelected[nsample];
   double yptr[nsample];
   int xdimSelected[2]={nsample,*subdim };
-  //double* yptrsTmp[mdim];
-  int noutAll[nsample];
+ 
+  int* noutAll =(int*)S_alloc(mdim*mdim,sizeof(int));
   double* xSelected =(double*)S_alloc(*subdim*nsample,sizeof(double));
-   //zeroDouble(yptrmtx,nsample*mdim);
+  double* yerr =(double*)S_alloc(mdim*nsample,sizeof(double));
+
+  double* cov_tmp =(double*)S_alloc(mdim*mdim,sizeof(double));
+
+  zeroInt(noutAll, mdim*mdim);
   /*select random variables as predictors and response variable. */
-  for(int i=0; i< mdim; i++ ){// iterate through all possible choices of response y
-      Rprintf("dimension: %d\n", i);
-      //yptrsTmp[i]=(double*)S_alloc(nsample,sizeof(double));
-      
-      //zeroInt(noutAll,nsample);
+  
+  int i=-1;
+  
+  while(true){// iterate for *sampleCount times, each time select a subset of xs and ys
+      i++;
+      bool needMoreIter=false;
+      for(int m=0; m<mdim; m++)
+      {
+        if(yflag[m]==0) {
+          needMoreIter=true;
+          break;
+        }
+      }
 
-      for(int k=0; k<nsample;k++)
-            ySelected[k]=x[i+k*mdim];
+      if(!needMoreIter && i>*sampleCount)
+        break;
 
-      for(int j=0; j< *dimSampleCount;j++){// for each choice of y, randomly select dimSampleCount combinations of x
-               
-                  chooseVar(x,i,mdim,nsample, *subdim, xSelected);
+      Rprintf("sampleCount: %d\n", i);
+     
+      for(int m=0; m< mdim;m++) ninds[m] = m; //ninds need to be shuffled
+      for(int m=0; m< mdim;m++) ninds_reverse[m] = 0;
+      chooseVar(x,i,mdim,nsample, xdimCount, xSelected,ninds,ninds_reverse);
+      zeroDouble(yptrmtx,nsample*mdim);
+      zeroDouble(yerr,nsample*mdim);
       
+      for(int j=0; j< ydimCount;j++){// select y
+                    yflag[ninds[j]]=1; //flag y
+                    for(int k=0; k<nsample;k++) ySelected[k]=x[ninds[j]+k*mdim];
+                   // zeroDouble(yptr, nsample);
                        
                        regRF(xSelected, ySelected, xdimSelected, sampsize,
                          nthsize, nrnodes, nTree,mtry, imp,
@@ -176,24 +186,26 @@ void regRFMultiRes(double *x, int *xdim, int *sampsize,
                                yTestPred, proxts, msets, coef,
                                nout, inbag,  yb,  xb,ytr, xtmp,
                               resOOB,  in,  nodex,  varUsed, nind,  ytree, nodexts, oobpair);
-                    
-                    for(int s=0; s<nsample; s++){
-                              // yptrsTmp[i][s]=(yptr[s]*nout[s]+ yptrsTmp[i][s]*noutAll[s])/(noutAll[s]+nout[s]+.1);  
-                              yptrmtx[i+s*mdim]=(yptr[s]*nout[s]+ yptrmtx[i+s*mdim]*noutAll[s])/(noutAll[s]+nout[s]+.1);                                
-                               noutAll[s]+=nout[s];
-                              }
-                       
-    
-   
-   }
- }
 
- //reformat yptrsTmp to yptrmtx
-  for(int s=0; s<nsample; s++)
-     for(int m=0; m<mdim; m++){
-        //yptrmtx[m+s*mdim]=yptrsTmp[m][s];
-        printf("%f,",yptrmtx[m+s*mdim]);
+            for(int s=0; s<nsample; s++){
+               yptrmtx[ninds[j]+s*mdim] = yptr[s];       
+               yerr[ninds[j]+s*mdim] = yptrmtx[ninds[j]+s*mdim] - x[ninds[j]+s*mdim];                   
+            }
+    }
+   
+
+     zeroDouble(cov_tmp,mdim*mdim);
+     computeCov(yerr,cov_tmp,nsample,mdim,ninds_reverse); //need to modify this part, average the covariance matrix 
+     for(int m1=0; m1<mdim; m1++){
+          if(ninds_reverse[m1]!=1) continue;
+        for(int m2=0; m2<mdim; m2++){
+          if(ninds_reverse[m2]!=1) continue;
+          cov[m1*mdim+m2]=(cov[m1*mdim+m2]*noutAll[m1*mdim+m2]+cov_tmp[m1*mdim+m2])/(++noutAll[m1*mdim+m2]);
+        }
      }
+
+
+  }
 }
 
 
@@ -308,7 +320,21 @@ void regRF(double *x, double *y, int *xdim, int *sampsize,
     /*************************************
      * Start the loop over trees.
      *************************************/
-    for (j = 0; j < *nTree; ++j) {
+    //for (j = 0; j < *nTree; ++j) 
+    j=-1;
+    while(true)
+    {
+      j++;
+      bool needMoreTrees=false;
+      for(int s=0;s<nsample;s++){
+        if(yptr[s]==0){
+           needMoreTrees=true;
+           break;
+        }
+      }
+      if( !needMoreTrees && j>=*nTree) break;
+
+
 		idx = keepF ? j * *nrnodes : 0;
 		zeroInt(in, nsample);
         zeroInt(varUsed, mdim);
