@@ -212,7 +212,7 @@ mylevels <- function(x) if (is.factor(x)) levels(x) else 0
         cwt <- classwt
         threshold <- cutoff
         error.test <- if (labelts) double((nclass+1) * ntree) else double(1)
-        rfout <- .C("classRF",
+        rfout <- .C("classRFIsingGraph",
                     x = x,
                     xdim = as.integer(c(p, n)),
                     y = as.integer(y),
